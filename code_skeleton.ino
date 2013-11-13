@@ -30,36 +30,31 @@ SdFile file; // SD file
 int interruptPin = 2;          //Setup ADXL362 interrupt output to Interrupt 0 (digital pin 2)
 int interruptStatus = 0;
 //
-int XValue, YValue, ZValue, Temperature; // We sense these values
+int XData, YData, ZData, Temp; // We sense these values
 //
 // On the Ethernet Shield, CS is pin 4. Note that even if it's not
 // used as the CS pin, the hardware CS pin (10 on most Arduino boards,
 // 53 on the Mega) must be left as an output or the SD library
 // functions will not work.
 const uint8_t sdChipSelect = 8; // CGFUMS pin 8 - JP, SD pin
+#define ADXLPin 10
 
-void setup()(
+void setup(){
 
     // Startup
-    Serial.begin(115200); // Begin serial communication
+    Serial.begin(9600); // Begin serial communication
     //
     //// INITIALIZING ADXL362
-    x1.begin();  //begin/reset ADXL362
+    xl.begin();  //begin/reset ADXL362
     delay(1000); //I don't really know why we need this delay in here yet
     //  
     //// INITIALIZING SD CARD
-    Serial.print("Initializing SD card...");
-    // make sure that the default chip select pin is set to
-    // output, even if you don't use it (meaning pin 10 must be set to output, I believe-AZ):
-    pinMode(10, OUTPUT);
-  
-    // see if the card is present and can be initialized:
-    if (!SD.begin(chipSelect)) {
-    Serial.println("Card failed, or not present");
-    // don't do anything more:
-    return;
+    if (!sd.begin(sdChipSelect)
+    || !file.open("DATALOG4.CSV", O_CREAT | O_WRITE | O_APPEND)) {
+    // Replace this with somthing for your app.
+    Serial.println(F("SD problem"));
+    while(1);
     }
-    Serial.println("card initialized.");
     //
     //// SETUP MOTION ACTIVATED SLEEP ON ARDUINO MINI
     //  Setup Activity and Inactivity thresholds
@@ -96,6 +91,21 @@ void setup()(
     //
 }
 
+    void measureADXL(){
+      digitalWrite(ADXLPin, LOW);
+      SPI.transfer(0x0B);  // read instruction
+      SPI.transfer(0x0E);  // Start at XData Reg
+      XData = SPI.transfer(0x00);
+      XData = XData + (SPI.transfer(0x00) << 8);
+      YData = SPI.transfer(0x00);
+      YData = YData + (SPI.transfer(0x00) << 8);
+      ZData = SPI.transfer(0x00);
+      ZData = ZData + (SPI.transfer(0x00) << 8);
+      Temp = SPI.transfer(0x00);
+      Temp = Temp + (SPI.transfer(0x00) << 8);
+      digitalWrite(ADXLPin, HIGH);
+    }
+
 void loop(){
   //
   //  Check ADXL362 interrupt status to determine if it's asleep
@@ -111,30 +121,31 @@ void loop(){
   // if ADXL362 is awake, report XYZT data to Serial Monitor
   else{
     delay(10); //why is this delay needed?
-    xl.readXYZTData(XValue, YValue, ZValue, Temperature); 
-    // give circuit time to settle after wakeup
-    delay(20); 
     
+    measureADXL();   
     //// WRITE DATA TO SD CARD
-    dataString = '1'; //For ON duty cycle 
-                      // Can store varying amounts of data
-                      // String(XValue)+ ' ' + String(YValue) + ' ' + String(ZValue);	
-    
-    // open the file. note that only one file can be open at a time,
-    // so you have to close this one before opening another.
-    File dataFile = SD.open("datalog.txt", FILE_WRITE);
-  
-    // if the file is available, write to it:
-    if (dataFile) {
-      dataFile.println(dataString);
-      dataFile.close();
-      // print to the serial port too:
+    String dataString = String(XData)+ ' ' + String(YData) + ' ' + String(ZData); //For ON duty cycle 
+//                      // Can store varying amounts of data
+//                      // String(XValue)+ ' ' + String(YValue) + ' ' + String(ZValue);	
+//    
+//    // datalog.csv has already been opened in setup
+//    // if the file is available, write to it:
+//    //if (file) {
+//// SCHEMA1: STORING RAW DATA
+      file.print(XData);
+      file.print(",");
+      file.print(YData);
+      file.print(",");
+      file.println(ZData);
+
+      file.sync();
+//      // print to the serial port too:
       Serial.println(dataString);
-    }  
+    //}  
     // if the file isn't open, pop up an error:
-    else {
-      Serial.println("error opening datalog.txt");
-    }     
+    //else {
+     // Serial.println("error opening datalog.csv");
+    //}     
   }
 }
 
@@ -146,5 +157,3 @@ void interruptFunction(){
   Serial.println("\nArduino is Awake! \n");
 }
 
-// Write to SD card
-// Check available memory space
